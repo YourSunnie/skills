@@ -1,0 +1,11 @@
+// skills.yoursunnie.com on Cloudflare (a Worker in front of static assets):
+//   node site/build.mjs && npx wrangler deploy
+// Build from a commit that is already pushed to GIT_UPSTREAM: the pages tell Sunnie to install that commit.
+{
+  "name": "skills-yoursunnie-com",
+  "compatibility_date": "2026-10-01",
+  "main": "site/worker.js",
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
+  "vars": { "GIT_UPSTREAM": "https://github.com/YourSunnie/skills.git" },
+  "routes": [{ "pattern": "skills.yoursunnie.com", "custom_domain": true }]
+}
