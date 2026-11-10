@@ -59,10 +59,10 @@ used.
 
 ## 3. Expenses, stock and suppliers
 
-Supplier invoices and purchase receipts go into `purchases` (`date, outlet, supplier, item, qty, unit, amount`) the
-same way: read, confirm, write.
+Supplier invoices and purchase receipts go into the `purchases` database, table `lines` (`date, outlet, supplier, item,
+qty, unit, amount`), the same way: read, confirm, write.
 
-For stock, keep `stock` (`outlet, item, unit, on_hand, par, updated`) and update it when they report a count. When an
+For stock, keep the `stock` database, table `levels` (`outlet, item, unit, on_hand, par, updated`), and update it when they report a count. When an
 item falls under `par`, say so and offer a reorder reminder with `task_add` at the time they usually order. When they
 want a supplier's price watched and the price is on a public page, a `watch_create` that wakes you only when it changes
 is enough; do not check it by hand every day.
@@ -120,6 +120,10 @@ food that does not exist. A generated picture of a dish they do not sell is misl
 6. Offer a Home widget with the days left to opening and the budget used (see the widget-design skill).
 
 ## 8. Every day
+
+When this skill's playbook is at work, the comparison with last week, the Monday summary, food cost and low stock come
+by themselves: do not ask the user to set reminders for them, and keep the menu's `plate_cost` and `food_cost_pct`
+filled in `menu.items` so the checks can see them. Keep the records with `record_add` then.
 
 If the user agrees, keep a Home widget per outlet with yesterday's net, the transactions and today's open tasks, and
 refresh it after each sales entry. Offer once; do not add widgets they did not ask for.

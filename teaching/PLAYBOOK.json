@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "title": "Teaching",
+  "for": ["teacher", "tutor", "lecturer", "school teacher", "secondary school", "primary school", "teaching assistant"],
+  "summary": "Keeps the timetable and the assignments you set, tells you the week ahead and how much marking is waiting, and turns school notices into dates.",
+  "asks": [
+    { "id": "classes", "question": "Which classes and subjects do you teach?", "why": "So the timetable and assignments are filed by class." },
+    { "id": "marking", "question": "When in the week do you usually mark?", "why": "To tell you about marking before then, not after." }
+  ],
+  "homework": [
+    { "id": "term_dates", "find": "The school's or district's published term dates and holidays.", "keep": "memory" }
+  ],
+  "records": [
+    { "database": "teaching", "table": "timetable", "columns": [
+      { "name": "day", "type": "text" }, { "name": "period", "type": "text" }, { "name": "class", "type": "text" },
+      { "name": "subject", "type": "text" }, { "name": "room", "type": "text" }
+    ], "key": ["day", "period"] },
+    { "database": "teaching", "table": "assignments", "columns": [
+      { "name": "class", "type": "text" }, { "name": "title", "type": "text" }, { "name": "set_on", "type": "date" },
+      { "name": "due", "type": "date" }, { "name": "to_mark", "type": "number" }, { "name": "marked", "type": "number" }
+    ], "key": ["class", "title"] }
+  ],
+  "senses": [
+    { "id": "notices", "kind": "mail", "describe": "Notices from the school", "ask": "If I watch your school mailbox, notices become dates on your list without you copying them.", "match": { "kind": "notice" } },
+    { "id": "school_calendar", "kind": "calendar", "describe": "Meetings and parents' evenings on your calendar", "ask": "With your calendar connected I can prepare you for meetings and parents' evenings.", "match": { "subject": "parent" } }
+  ],
+  "rhythms": [
+    { "id": "week_ahead", "when": { "every": "week", "days": ["sun"], "at": "17:00" }, "do": "The week ahead: classes, assignments due in, marking waiting, and dates from school notices.", "say": "always" },
+    { "id": "notice", "when": { "on": "sense:notices" }, "do": "Add the dates in the notice as follow-ups and say what changes for their week.", "say": "if-notable" }
+  ],
+  "signals": [
+    { "id": "marking", "when": "marking has waited more than a week", "say": "Say which class and how many pieces are left.", "check": { "database": "teaching", "sql": "SELECT class, title, to_mark - marked AS left_to_mark, due FROM assignments WHERE to_mark > marked AND due < date('now', '-7 day') ORDER BY due" } }
+  ],
+  "prepare": [
+    { "id": "school_date", "when": "a notice gives a date that is not on the calendar", "action": "calendar_change", "describe": "The school date added to your calendar" }
+  ]
+}

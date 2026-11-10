@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "title": "Keeping on top of life admin",
+  "for": ["anyone", "busy person", "parent", "household", "bills and renewals", "personal admin", "paperwork"],
+  "summary": "Keeps track of bills, renewals, appointments, deliveries and documents that expire, tells you the week ahead, and warns you before something is due.",
+  "asks": [
+    { "id": "admin_day", "question": "Which day suits you to deal with paperwork?", "why": "So the week ahead comes on a day you can act on it." }
+  ],
+  "records": [
+    { "database": "admin", "table": "bills", "columns": [
+      { "name": "name", "type": "text" }, { "name": "provider", "type": "text" }, { "name": "amount", "type": "number" },
+      { "name": "currency", "type": "text" }, { "name": "due", "type": "date" }, { "name": "repeats", "type": "text" },
+      { "name": "paid", "type": "date" }
+    ], "key": ["name", "due"] },
+    { "database": "admin", "table": "documents", "columns": [
+      { "name": "name", "type": "text" }, { "name": "holder", "type": "text" }, { "name": "expires", "type": "date" },
+      { "name": "renew_how", "type": "text" }
+    ], "key": ["name", "holder"] },
+    { "database": "admin", "table": "deliveries", "columns": [
+      { "name": "item", "type": "text" }, { "name": "shop", "type": "text" }, { "name": "expected", "type": "date" },
+      { "name": "status", "type": "text" }
+    ], "key": ["item", "shop"] }
+  ],
+  "senses": [
+    { "id": "bills", "kind": "mail", "describe": "Bills that arrive in your mailbox", "ask": "If I watch your mailbox, bills and renewals get noted the day they arrive. Want to turn that on?", "match": { "kind": "invoice" }, "into": "admin.bills" },
+    { "id": "deliveries", "kind": "mail", "describe": "Shipping notices from shops", "ask": "Shipping notices in your mailbox tell me what is on its way and when.", "match": { "subject": "shipped" }, "into": "admin.deliveries" },
+    { "id": "appointments", "kind": "calendar", "describe": "Appointments on your calendar", "ask": "With your calendar connected I can remind you what to bring to appointments.", "match": { "subject": "appointment" } }
+  ],
+  "rhythms": [
+    { "id": "week_ahead", "when": { "every": "week", "days": ["sun"], "at": "18:00" }, "do": "The week ahead: bills due, renewals, appointments and deliveries expected, each with what to do about it.", "say": "if-notable" },
+    { "id": "expiring", "when": { "every": "month", "day": 1, "at": "09:00" }, "do": "Documents and subscriptions that expire or renew in the next 90 days, with how to renew each.", "say": "if-notable" },
+    { "id": "new_bill", "when": { "on": "sense:bills" }, "do": "Note the bill; if it is due within five days, say so with the amount.", "say": "if-notable" }
+  ],
+  "signals": [
+    { "id": "due_soon", "when": "a bill is due in the next three days and not paid", "say": "Name it, the amount and the date.", "check": { "database": "admin", "sql": "SELECT name, amount, currency, due FROM bills WHERE paid IS NULL AND due <= date('now', '+3 day') ORDER BY due" } },
+    { "id": "expiring", "when": "a document expires in the next 60 days", "say": "Name it, whose it is and when, and how it is renewed.", "check": { "database": "admin", "sql": "SELECT name, holder, expires FROM documents WHERE expires <= date('now', '+60 day') ORDER BY expires" } }
+  ],
+  "prepare": [
+    { "id": "appointment", "when": "a confirmation names a date not on the calendar", "action": "calendar_change", "describe": "The appointment added to your calendar" }
+  ]
+}

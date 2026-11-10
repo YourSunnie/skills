@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkPlaybook, playbookEntry } from './playbook.mjs';
 
 export const SITE = 'https://skills.yoursunnie.com';
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -53,6 +54,16 @@ export function readSkills() {
       for (const key of ['description']) if (!data[key]) throw new Error(`${id}/SKILL.md: ${key} is missing.`);
       for (const key of ['purpose', 'for']) if (!data.metadata[key]) throw new Error(`${id}/SKILL.md: metadata.${key} is missing.`);
       if (Buffer.byteLength(text) > 64 * 1024) throw new Error(`${id}/SKILL.md is over 64 KiB.`);
+      // A playbook beside it: checked here, so a broken one never reaches a Sunnie.
+      const playbookPath = join(root, id, 'PLAYBOOK.json');
+      let playbook;
+      if (statSync(playbookPath, { throwIfNoEntry: false })) {
+        const raw = readFileSync(playbookPath, 'utf8');
+        if (Buffer.byteLength(raw) > 32 * 1024) throw new Error(`${id}/PLAYBOOK.json is over 32 KiB.`);
+        const problems = checkPlaybook(JSON.parse(raw));
+        if (problems.length) throw new Error(`${id}/PLAYBOOK.json:\n  ${problems.join('\n  ')}`);
+        playbook = playbookEntry(JSON.parse(raw));
+      }
       return {
         id,
         description: data.description,
@@ -61,6 +72,7 @@ export function readSkills() {
         version: data.metadata.version ?? '1',
         files: files(join(root, id)).map((path) => relative(join(root, id), path)).sort(),
         content: text,
+        ...(playbook ? { playbook } : {}),
       };
     });
 }
@@ -155,8 +167,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   writeFileSync(join(out, 'index.json'), `${JSON.stringify({
     repository: SITE,
     ref,
-    skills: skills.map(({ id, description, purpose, for: audience, version, files }) => ({
-      id, description, purpose, for: audience, version, path: id, url: `${SITE}/${id}`, files,
+    skills: skills.map(({ id, description, purpose, for: audience, version, files, playbook }) => ({
+      id, description, purpose, for: audience, version, path: id, url: `${SITE}/${id}`, files, ...(playbook ? { playbook } : {}),
     })),
   }, null, 2)}\n`);
   console.log(`Built ${skills.length} skill page(s) at ${ref.slice(0, 12)} into dist/.`);

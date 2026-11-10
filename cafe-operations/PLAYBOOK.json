@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "title": "Running a cafe",
+  "for": ["cafe manager", "cafe owner", "restaurant manager", "restaurant owner", "food stall", "coffee shop", "bakery", "food and drink outlet"],
+  "summary": "Keeps the outlet's sales, purchases, menu and stock in one place, compares each day with the last, sums up the week, and says when a dish costs too much or stock runs low.",
+  "asks": [
+    { "id": "outlets", "question": "Which outlets do you run, and what are they called?", "why": "So every number lands in the right outlet's rows." },
+    { "id": "food_cost", "question": "What food cost do you aim for, as a percentage of the price?", "why": "To say when a dish costs more than you want it to." }
+  ],
+  "homework": [
+    { "id": "listing", "find": "The outlet's public listing: address, opening hours, what it is known for.", "keep": "memory" },
+    { "id": "menu", "find": "The menu with its prices, from the outlet's own page or a delivery app.", "keep": "records.menu.items" },
+    { "id": "reviews", "find": "Recent public reviews, and any nobody answered.", "keep": "memory" }
+  ],
+  "records": [
+    { "database": "sales", "table": "days", "columns": [
+      { "name": "date", "type": "date" }, { "name": "outlet", "type": "text" }, { "name": "channel", "type": "text" },
+      { "name": "gross", "type": "number" }, { "name": "discount", "type": "number" }, { "name": "tax_service", "type": "number" },
+      { "name": "net", "type": "number" }, { "name": "transactions", "type": "number" }, { "name": "currency", "type": "text" },
+      { "name": "source", "type": "text" }
+    ], "key": ["date", "outlet", "channel"] },
+    { "database": "sales", "table": "items", "columns": [
+      { "name": "date", "type": "date" }, { "name": "outlet", "type": "text" }, { "name": "channel", "type": "text" },
+      { "name": "item", "type": "text" }, { "name": "qty", "type": "number" }, { "name": "amount", "type": "number" }
+    ], "key": ["date", "outlet", "channel", "item"] },
+    { "database": "purchases", "table": "lines", "columns": [
+      { "name": "date", "type": "date" }, { "name": "outlet", "type": "text" }, { "name": "supplier", "type": "text" },
+      { "name": "item", "type": "text" }, { "name": "qty", "type": "number" }, { "name": "unit", "type": "text" },
+      { "name": "amount", "type": "number" }
+    ] },
+    { "database": "menu", "table": "items", "columns": [
+      { "name": "item", "type": "text" }, { "name": "category", "type": "text" }, { "name": "price", "type": "number" },
+      { "name": "plate_cost", "type": "number" }, { "name": "food_cost_pct", "type": "number" }
+    ], "key": ["item"] },
+    { "database": "stock", "table": "levels", "columns": [
+      { "name": "outlet", "type": "text" }, { "name": "item", "type": "text" }, { "name": "unit", "type": "text" },
+      { "name": "on_hand", "type": "number" }, { "name": "par", "type": "number" }, { "name": "updated", "type": "date" }
+    ], "key": ["outlet", "item"] }
+  ],
+  "senses": [
+    { "id": "till_report", "kind": "address", "describe": "The daily sales report your till system can email", "ask": "Your till can email its closing report every night. Shall I show you the address to send it to?", "match": { "kind": "report" }, "into": "sales.days" },
+    { "id": "delivery_statement", "kind": "address", "describe": "The statements your delivery apps send", "ask": "Delivery apps email a statement of what they paid out. Forward them to me and I'll keep them with the sales.", "match": { "kind": "statement" }, "into": "sales.days" },
+    { "id": "delivery_page", "kind": "site", "describe": "The orders page of your delivery app's merchant site", "ask": "If you sign in to your delivery app's merchant page with me once, I can keep an eye on new orders and ratings.", "match": { "subject": "orders" } },
+    { "id": "invoice", "kind": "address", "describe": "Supplier invoices", "ask": "Forward supplier invoices to me and I'll keep ingredient prices up to date.", "match": { "kind": "invoice" }, "into": "purchases.lines" }
+  ],
+  "rhythms": [
+    { "id": "daily", "when": { "on": "sense:till_report" }, "do": "Compare this day's net sales and transactions with the same weekday last week, per outlet. Mention the one item that moved most.", "say": "if-notable" },
+    { "id": "weekly", "when": { "every": "week", "days": ["mon"], "at": "08:00" }, "do": "The week in three lines: net sales against the week before, the best and the weakest item, and anything over the food-cost target.", "needs": [{ "records": "sales.days", "freshHours": 192 }], "say": "always" },
+    { "id": "prices", "when": { "on": "sense:invoice" }, "do": "Update ingredient prices from the invoice and recheck the plate cost of the dishes that use them; say which went past the food-cost target.", "say": "if-notable" }
+  ],
+  "signals": [
+    { "id": "food_cost", "when": "a dish costs more than 35 % of its price", "say": "Name the dish, its food cost now, and what price or portion would bring it back.", "check": { "database": "menu", "sql": "SELECT item, price, plate_cost, food_cost_pct FROM items WHERE food_cost_pct > 35 ORDER BY food_cost_pct DESC" } },
+    { "id": "low_stock", "when": "an item is under its par level", "say": "Say what is low, at which outlet, and offer a reorder.", "check": { "database": "stock", "sql": "SELECT outlet, item, on_hand, par, unit FROM levels WHERE on_hand < par" } }
+  ],
+  "prepare": [
+    { "id": "reorder", "when": "stock is under par and the usual supplier is known", "action": "mail_send", "describe": "A reorder message to the usual supplier" }
+  ]
+}

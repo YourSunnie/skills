@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "title": "Running a freelance practice",
+  "for": ["freelancer", "illustrator", "designer", "photographer", "writer", "developer", "consultant", "small studio"],
+  "summary": "Keeps clients, quotes, deadlines and invoices in one place, tells you the week's deadlines and who has not paid, and drafts the reminder for you to send.",
+  "asks": [
+    { "id": "terms", "question": "What payment terms do you give clients, and in which currency?", "why": "To tell when an invoice is late." },
+    { "id": "invoicing", "question": "How do you send invoices: an app, a template, or by hand?", "why": "So I keep them in step with how you already work." }
+  ],
+  "homework": [
+    { "id": "portfolio", "find": "Their public portfolio or profile: what they make and for whom.", "keep": "memory" }
+  ],
+  "records": [
+    { "database": "studio", "table": "clients", "columns": [
+      { "name": "name", "type": "text" }, { "name": "company", "type": "text" }, { "name": "terms", "type": "text" }
+    ], "key": ["name"] },
+    { "database": "studio", "table": "projects", "columns": [
+      { "name": "client", "type": "text" }, { "name": "project", "type": "text" }, { "name": "quote", "type": "number" },
+      { "name": "deadline", "type": "date" }, { "name": "status", "type": "text" }
+    ], "key": ["client", "project"] },
+    { "database": "studio", "table": "invoices", "columns": [
+      { "name": "number", "type": "text" }, { "name": "client", "type": "text" }, { "name": "amount", "type": "number" },
+      { "name": "currency", "type": "text" }, { "name": "sent", "type": "date" }, { "name": "due", "type": "date" },
+      { "name": "paid", "type": "date" }
+    ], "key": ["number"] }
+  ],
+  "senses": [
+    { "id": "payments", "kind": "mail", "describe": "Payment notices from your bank or payment app", "ask": "If I watch your mailbox, I can mark invoices paid the moment the money arrives.", "match": { "kind": "receipt" } },
+    { "id": "client_calls", "kind": "calendar", "describe": "Client calls and reviews on your calendar", "ask": "With your calendar connected I can get you ready before each client call.", "match": { "kind": "invitation" } }
+  ],
+  "rhythms": [
+    { "id": "week", "when": { "every": "week", "days": ["mon"], "at": "09:00" }, "do": "This week's deadlines, invoices past due, and quotes still waiting for an answer.", "say": "always" },
+    { "id": "tomorrow", "when": { "every": "day", "at": "17:00" }, "do": "Anything due tomorrow that is not marked done.", "say": "if-notable" },
+    { "id": "paid", "when": { "on": "sense:payments" }, "do": "Match the payment to an open invoice by amount and client, and mark it paid; say which.", "say": "if-notable" }
+  ],
+  "signals": [
+    { "id": "overdue", "when": "an invoice is past its due date and unpaid", "say": "Name the client, the invoice and how late it is.", "check": { "database": "studio", "sql": "SELECT client, number, amount, currency, due FROM invoices WHERE paid IS NULL AND due < date('now') ORDER BY due" } },
+    { "id": "deadline", "when": "a project is due within two days and not done", "say": "Name the project and the day.", "check": { "database": "studio", "sql": "SELECT client, project, deadline FROM projects WHERE status != 'done' AND deadline <= date('now', '+2 day') ORDER BY deadline" } }
+  ],
+  "prepare": [
+    { "id": "chase", "when": "an invoice is more than a week late", "action": "mail_send", "describe": "A polite payment reminder to the client" }
+  ]
+}
