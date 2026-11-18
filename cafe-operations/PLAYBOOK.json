@@ -2,7 +2,7 @@
   "version": 1,
   "title": "Running a cafe",
   "for": ["cafe manager", "cafe owner", "restaurant manager", "restaurant owner", "food stall", "coffee shop", "bakery", "food and drink outlet"],
-  "summary": "Keeps the outlet's sales, purchases, menu and stock in one place, compares each day with the last, sums up the week, and says when a dish costs too much or stock runs low.",
+  "summary": "Keeps the outlet's sales, purchases, menu and stock in one place, compares each day with the last, sums up the week, keeps what moves between storage and the bar, and says when a dish costs too much, stock runs low or a count does not add up.",
   "asks": [
     { "id": "outlets", "question": "Which outlets do you run, and what are they called?", "why": "So every number lands in the right outlet's rows." },
     { "id": "food_cost", "question": "What food cost do you aim for, as a percentage of the price?", "why": "To say when a dish costs more than you want it to." }
@@ -35,7 +35,22 @@
     { "database": "stock", "table": "levels", "columns": [
       { "name": "outlet", "type": "text" }, { "name": "item", "type": "text" }, { "name": "unit", "type": "text" },
       { "name": "on_hand", "type": "number" }, { "name": "par", "type": "number" }, { "name": "updated", "type": "date" }
-    ], "key": ["outlet", "item"] }
+    ], "key": ["outlet", "item"] },
+    { "database": "stock", "table": "moves", "columns": [
+      { "name": "date", "type": "date" }, { "name": "outlet", "type": "text" }, { "name": "item", "type": "text" },
+      { "name": "qty", "type": "number" }, { "name": "unit", "type": "text" }, { "name": "from_location", "type": "text" },
+      { "name": "to_location", "type": "text" }, { "name": "qty_received", "type": "number" }, { "name": "logged_by", "type": "text" },
+      { "name": "source", "type": "text" }, { "name": "note", "type": "text" }
+    ] },
+    { "database": "stock", "table": "counts", "columns": [
+      { "name": "date", "type": "date" }, { "name": "outlet", "type": "text" }, { "name": "location", "type": "text" },
+      { "name": "item", "type": "text" }, { "name": "unit", "type": "text" }, { "name": "counted", "type": "number" },
+      { "name": "counted_by", "type": "text" }, { "name": "source", "type": "text" }
+    ], "key": ["date", "outlet", "location", "item"] },
+    { "database": "menu", "table": "recipes", "columns": [
+      { "name": "item", "type": "text" }, { "name": "ingredient", "type": "text" }, { "name": "qty", "type": "number" },
+      { "name": "unit", "type": "text" }
+    ], "key": ["item", "ingredient"] }
   ],
   "senses": [
     { "id": "till_report", "kind": "address", "describe": "The daily sales report your till system can email", "ask": "Your till can email its closing report every night. Shall I show you the address to send it to?", "match": { "kind": "report" }, "into": "sales.days" },
@@ -44,13 +59,15 @@
     { "id": "invoice", "kind": "address", "describe": "Supplier invoices", "ask": "Forward supplier invoices to me and I'll keep ingredient prices up to date.", "match": { "kind": "invoice" }, "into": "purchases.lines" }
   ],
   "rhythms": [
-    { "id": "daily", "when": { "on": "sense:till_report" }, "do": "Compare this day's net sales and transactions with the same weekday last week, per outlet. Mention the one item that moved most.", "say": "if-notable" },
-    { "id": "weekly", "when": { "every": "week", "days": ["mon"], "at": "08:00" }, "do": "The week in three lines: net sales against the week before, the best and the weakest item, and anything over the food-cost target.", "needs": [{ "records": "sales.days", "freshHours": 192 }], "say": "always" },
+    { "id": "daily", "when": { "on": "sense:till_report" }, "do": "Compare this day's net sales and transactions with the same weekday last week, per outlet. Mention the one item that moved most. Where menu.recipes covers the items sold, add what the bar used to stock.moves (from bar to sold).", "say": "if-notable" },
+    { "id": "weekly", "when": { "every": "week", "days": ["mon"], "at": "08:00" }, "do": "The week in three lines: net sales against the week before, the best and the weakest item, anything over the food-cost target, and any stock that did not add up at the last count.", "needs": [{ "records": "sales.days", "freshHours": 192 }], "say": "always" },
     { "id": "prices", "when": { "on": "sense:invoice" }, "do": "Update ingredient prices from the invoice and recheck the plate cost of the dishes that use them; say which went past the food-cost target.", "say": "if-notable" }
   ],
   "signals": [
     { "id": "food_cost", "when": "a dish costs more than 35 % of its price", "say": "Name the dish, its food cost now, and what price or portion would bring it back.", "check": { "database": "menu", "sql": "SELECT item, price, plate_cost, food_cost_pct FROM items WHERE food_cost_pct > 35 ORDER BY food_cost_pct DESC" } },
-    { "id": "low_stock", "when": "an item is under its par level", "say": "Say what is low, at which outlet, and offer a reorder.", "check": { "database": "stock", "sql": "SELECT outlet, item, on_hand, par, unit FROM levels WHERE on_hand < par" } }
+    { "id": "low_stock", "when": "an item is under its par level", "say": "Say what is low, at which outlet, and offer a reorder.", "check": { "database": "stock", "sql": "SELECT outlet, item, on_hand, par, unit FROM levels WHERE on_hand < par" } },
+    { "id": "stock_imbalance", "when": "a stock count does not match the last count plus what came in minus what went out", "say": "Say which item, where, how much is missing or extra against what was expected, and the moves since the last count that could explain it. Ask; never accuse anyone.", "check": { "database": "stock", "sql": "WITH c AS (SELECT outlet, location, item, unit, date, counted, LAG(date) OVER w AS since, LAG(counted) OVER w AS counted_then, ROW_NUMBER() OVER (PARTITION BY outlet, location, item ORDER BY date DESC) AS n FROM counts WINDOW w AS (PARTITION BY outlet, location, item ORDER BY date)), f AS (SELECT c.*, COALESCE((SELECT SUM(COALESCE(m.qty_received, m.qty)) FROM moves m WHERE m.outlet = c.outlet AND m.item = c.item AND m.to_location = c.location AND m.date > c.since AND m.date <= c.date), 0) AS came_in, COALESCE((SELECT SUM(m.qty) FROM moves m WHERE m.outlet = c.outlet AND m.item = c.item AND m.from_location = c.location AND m.date > c.since AND m.date <= c.date), 0) AS went_out FROM c WHERE n = 1 AND since IS NOT NULL AND date >= date('now', '-8 days')) SELECT outlet, location, item, unit, since, counted_then, came_in, went_out, counted_then + came_in - went_out AS expected, counted, counted - (counted_then + came_in - went_out) AS difference FROM f WHERE ABS(counted - (counted_then + came_in - went_out)) > MAX(1, 0.05 * ABS(counted_then + came_in - went_out)) ORDER BY ABS(counted - (counted_then + came_in - went_out)) DESC" } },
+    { "id": "transfer_mismatch", "when": "what the bar wrote it received differs from what storage wrote it sent", "say": "Name the day, the item and both numbers, and ask which one is right.", "check": { "database": "stock", "sql": "SELECT date, outlet, item, qty AS sent, qty_received AS received, unit, from_location, to_location, logged_by FROM moves WHERE qty_received IS NOT NULL AND qty_received <> qty AND date >= date('now', '-8 days') ORDER BY date DESC" } }
   ],
   "prepare": [
     { "id": "reorder", "when": "stock is under par and the usual supplier is known", "action": "mail_send", "describe": "A reorder message to the usual supplier" }
